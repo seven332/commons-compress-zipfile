@@ -22,7 +22,6 @@ import static org.apache.commons.compress.AbstractTestCase.getFile;
 import static org.junit.Assert.*;
 
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 
 import org.junit.Test;
@@ -49,33 +48,6 @@ public class EncryptedArchiveTest {
             }
         } finally {
             ZipFile.closeQuietly(zf);
-        }
-    }
-
-    @Test
-    public void testReadPasswordEncryptedEntryViaStream()
-        throws IOException {
-        final File file = getFile("password-encrypted.zip");
-        ZipArchiveInputStream zin = null;
-        try {
-            zin = new ZipArchiveInputStream(new FileInputStream(file));
-            final ZipArchiveEntry zae = zin.getNextZipEntry();
-            assertEquals("LICENSE.txt", zae.getName());
-            assertTrue(zae.getGeneralPurposeBit().usesEncryption());
-            assertFalse(zae.getGeneralPurposeBit().usesStrongEncryption());
-            assertFalse(zin.canReadEntryData(zae));
-            try {
-                final byte[] buf = new byte[1024];
-                zin.read(buf, 0, buf.length);
-                fail("expected an exception");
-            } catch (final UnsupportedZipFeatureException ex) {
-                assertSame(UnsupportedZipFeatureException.Feature.ENCRYPTION,
-                           ex.getFeature());
-            }
-        } finally {
-            if (zin != null) {
-                zin.close();
-            }
         }
     }
 }

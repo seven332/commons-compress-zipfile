@@ -20,7 +20,6 @@ package org.apache.commons.compress.archivers.zip;
 
 import static org.junit.Assert.*;
 
-import java.io.ByteArrayOutputStream;
 import java.util.zip.ZipEntry;
 
 import org.junit.Test;
@@ -200,34 +199,6 @@ public class ZipArchiveEntryTest {
         assertEquals(0577,
                      (ze.getExternalAttributes() >> 16) & 0xFFFF);
         assertEquals(0x11, ze.getExternalAttributes()  & 0xFFFF);
-    }
-
-    /**
-     * Test case for
-     * <a href="https://issues.apache.org/jira/browse/COMPRESS-93"
-     * >COMPRESS-93</a>.
-     */
-    @Test
-    public void testCompressionMethod() throws Exception {
-        final ZipArchiveOutputStream zos =
-            new ZipArchiveOutputStream(new ByteArrayOutputStream());
-        final ZipArchiveEntry entry = new ZipArchiveEntry("foo");
-        assertEquals(-1, entry.getMethod());
-        assertFalse(zos.canWriteEntryData(entry));
-
-        entry.setMethod(ZipEntry.STORED);
-        assertEquals(ZipEntry.STORED, entry.getMethod());
-        assertTrue(zos.canWriteEntryData(entry));
-
-        entry.setMethod(ZipEntry.DEFLATED);
-        assertEquals(ZipEntry.DEFLATED, entry.getMethod());
-        assertTrue(zos.canWriteEntryData(entry));
-
-        // Test the unsupported "imploded" compression method (6)
-        entry.setMethod(6);
-        assertEquals(6, entry.getMethod());
-        assertFalse(zos.canWriteEntryData(entry));
-        zos.close();
     }
 
     /**

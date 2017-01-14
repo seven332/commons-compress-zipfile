@@ -23,18 +23,13 @@ import static org.junit.Assert.*;
 
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.InputStream;
-import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Enumeration;
 import java.util.TreeMap;
-import java.util.zip.ZipEntry;
 
 import org.apache.commons.compress.utils.IOUtils;
-import org.apache.commons.compress.utils.SeekableInMemoryByteChannel;
 import org.junit.After;
 import org.junit.Test;
 
@@ -49,40 +44,6 @@ public class ZipFileTest {
     @Test
     public void testCDOrder() throws Exception {
         readOrderTest();
-        final ArrayList<ZipArchiveEntry> l = Collections.list(zf.getEntries());
-        assertEntryName(l, 0, "AbstractUnicodeExtraField");
-        assertEntryName(l, 1, "AsiExtraField");
-        assertEntryName(l, 2, "ExtraFieldUtils");
-        assertEntryName(l, 3, "FallbackZipEncoding");
-        assertEntryName(l, 4, "GeneralPurposeBit");
-        assertEntryName(l, 5, "JarMarker");
-        assertEntryName(l, 6, "NioZipEncoding");
-        assertEntryName(l, 7, "Simple8BitZipEncoding");
-        assertEntryName(l, 8, "UnicodeCommentExtraField");
-        assertEntryName(l, 9, "UnicodePathExtraField");
-        assertEntryName(l, 10, "UnixStat");
-        assertEntryName(l, 11, "UnparseableExtraFieldData");
-        assertEntryName(l, 12, "UnrecognizedExtraField");
-        assertEntryName(l, 13, "ZipArchiveEntry");
-        assertEntryName(l, 14, "ZipArchiveInputStream");
-        assertEntryName(l, 15, "ZipArchiveOutputStream");
-        assertEntryName(l, 16, "ZipEncoding");
-        assertEntryName(l, 17, "ZipEncodingHelper");
-        assertEntryName(l, 18, "ZipExtraField");
-        assertEntryName(l, 19, "ZipUtil");
-        assertEntryName(l, 20, "ZipLong");
-        assertEntryName(l, 21, "ZipShort");
-        assertEntryName(l, 22, "ZipFile");
-    }
-
-    @Test
-    public void testCDOrderInMemory() throws Exception {
-        byte[] data = null;
-        try (FileInputStream fis = new FileInputStream(getFile("ordertest.zip"))) {
-            data = IOUtils.toByteArray(fis);
-        }
-
-        zf = new ZipFile(new SeekableInMemoryByteChannel(data), ZipEncodingHelper.UTF8);
         final ArrayList<ZipArchiveEntry> l = Collections.list(zf.getEntries());
         assertEntryName(l, 0, "AbstractUnicodeExtraField");
         assertEntryName(l, 1, "AsiExtraField");
@@ -146,44 +107,6 @@ public class ZipFileTest {
             zf.close();
         } catch (final Exception ex) {
             fail("Caught exception of second close");
-        }
-    }
-
-    @Test
-    public void testReadingOfStoredEntry() throws Exception {
-        final File f = File.createTempFile("commons-compress-zipfiletest", ".zip");
-        f.deleteOnExit();
-        OutputStream o = null;
-        InputStream i = null;
-        try {
-            o = new FileOutputStream(f);
-            final ZipArchiveOutputStream zo = new ZipArchiveOutputStream(o);
-            ZipArchiveEntry ze = new ZipArchiveEntry("foo");
-            ze.setMethod(ZipEntry.STORED);
-            ze.setSize(4);
-            ze.setCrc(0xb63cfbcdl);
-            zo.putArchiveEntry(ze);
-            zo.write(new byte[] { 1, 2, 3, 4 });
-            zo.closeArchiveEntry();
-            zo.close();
-            o.close();
-            o  = null;
-
-            zf = new ZipFile(f);
-            ze = zf.getEntry("foo");
-            assertNotNull(ze);
-            i = zf.getInputStream(ze);
-            final byte[] b = new byte[4];
-            assertEquals(4, i.read(b));
-            assertEquals(-1, i.read());
-        } finally {
-            if (o != null) {
-                o.close();
-            }
-            if (i != null) {
-                i.close();
-            }
-            f.delete();
         }
     }
 

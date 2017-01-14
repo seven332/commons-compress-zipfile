@@ -444,27 +444,6 @@ public class ZipFile implements Closeable {
         return new BoundedInputStream(start, ze.getCompressedSize());
     }
 
-
-    /**
-     * Transfer selected entries from this zipfile to a given #ZipArchiveOutputStream.
-     * Compression and all other attributes will be as in this file.
-     * <p>This method transfers entries based on the central directory of the zip file.</p>
-     *
-     * @param target The zipArchiveOutputStream to write the entries to
-     * @param predicate A predicate that selects which entries to write
-     * @throws IOException on error
-     */
-    public void copyRawEntries(final ZipArchiveOutputStream target, final ZipArchiveEntryPredicate predicate)
-            throws IOException {
-        final Enumeration<ZipArchiveEntry> src = getEntriesInPhysicalOrder();
-        while (src.hasMoreElements()) {
-            final ZipArchiveEntry entry = src.nextElement();
-            if (predicate.test( entry)) {
-                target.addRawArchiveEntry(entry, getRawInputStream(entry));
-            }
-        }
-    }
-
     /**
      * Returns an InputStream for reading the contents of the given entry.
      *
@@ -591,7 +570,7 @@ public class ZipFile implements Closeable {
         /* relative offset of local header */ + WORD;
 
     private static final long CFH_SIG =
-        ZipLong.getValue(ZipArchiveOutputStream.CFH_SIG);
+        ZipLong.getValue(ZipConstants.CFH_SIG);
 
     /**
      * Reads the central directory of the given archive and populates
@@ -879,7 +858,7 @@ public class ZipFile implements Closeable {
             archive.position(archive.position() - ZIP64_EOCDL_LENGTH);
             wordBbuf.rewind();
             IOUtils.readFully(archive, wordBbuf);
-            found = Arrays.equals(ZipArchiveOutputStream.ZIP64_EOCD_LOC_SIG,
+            found = Arrays.equals(ZipConstants.ZIP64_EOCD_LOC_SIG,
                                   wordBuf);
         }
         if (!found) {
@@ -911,7 +890,7 @@ public class ZipFile implements Closeable {
         archive.position(ZipEightByteInteger.getLongValue(dwordBuf));
         wordBbuf.rewind();
         IOUtils.readFully(archive, wordBbuf);
-        if (!Arrays.equals(wordBuf, ZipArchiveOutputStream.ZIP64_EOCD_SIG)) {
+        if (!Arrays.equals(wordBuf, ZipConstants.ZIP64_EOCD_SIG)) {
             throw new ZipException("archive's ZIP64 end of central "
                                    + "directory locator is corrupt.");
         }
@@ -944,7 +923,7 @@ public class ZipFile implements Closeable {
     private void positionAtEndOfCentralDirectoryRecord()
         throws IOException {
         final boolean found = tryToLocateSignature(MIN_EOCD_SIZE, MAX_EOCD_SIZE,
-                                             ZipArchiveOutputStream.EOCD_SIG);
+                                             ZipConstants.EOCD_SIG);
         if (!found) {
             throw new ZipException("archive is not a ZIP archive");
         }
@@ -1077,7 +1056,7 @@ public class ZipFile implements Closeable {
         archive.position(0);
         wordBbuf.rewind();
         IOUtils.readFully(archive, wordBbuf);
-        return Arrays.equals(wordBuf, ZipArchiveOutputStream.LFH_SIG);
+        return Arrays.equals(wordBuf, ZipConstants.LFH_SIG);
     }
 
     /**

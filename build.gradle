@@ -8,22 +8,12 @@ tasks.withType(JavaCompile) {
     options.encoding = 'iso-8859-1'
 }
 
-task processTestResources2(type: Copy) {
-    from tarTree(resources.bzip2('src/test/resources/zip64support.tar.bz2'))
-    into sourceSets.test.output.resourcesDir
-}
-
-test.dependsOn processTestResources2
-
 repositories {
     jcenter()
 }
 
 dependencies {
-    compile 'org.tukaani:xz:1.6'
     testCompile 'junit:junit:4.12'
-    testCompile 'org.powermock:powermock-module-junit4:1.6.4'
-    testCompile 'org.powermock:powermock-api-mockito:1.6.4'
 }
 
 task sourcesJar(type: Jar, dependsOn: classes) {
