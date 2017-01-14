@@ -10,10 +10,12 @@ tasks.withType(JavaCompile) {
 
 repositories {
     jcenter()
+    maven { url 'https://jitpack.io' }
 }
 
 dependencies {
     testCompile 'junit:junit:4.12'
+    compile 'com.github.seven332.okio:okio:1.11.0'
 }
 
 task sourcesJar(type: Jar, dependsOn: classes) {

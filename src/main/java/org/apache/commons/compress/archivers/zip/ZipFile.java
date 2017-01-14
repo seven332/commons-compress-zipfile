@@ -23,15 +23,10 @@ import java.io.EOFException;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.ByteBuffer;
-import java.nio.channels.SeekableByteChannel;
-import java.nio.file.Files;
-import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.Enumeration;
-import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -39,6 +34,10 @@ import java.util.Map;
 import java.util.zip.Inflater;
 import java.util.zip.InflaterInputStream;
 import java.util.zip.ZipException;
+
+import okio.BufferedStore;
+import okio.Okio;
+import okio.Store;
 
 import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.apache.commons.compress.utils.IOUtils;
@@ -129,7 +128,7 @@ public class ZipFile implements Closeable {
     /**
      * The actual data source.
      */
-    private final SeekableByteChannel archive;
+    private final BufferedStore archive;
 
     /**
      * Whether to look for and use Unicode extra fields.
@@ -146,9 +145,6 @@ public class ZipFile implements Closeable {
     private final byte[] wordBuf = new byte[WORD];
     private final byte[] cfhBuf = new byte[CFH_LEN];
     private final byte[] shortBuf = new byte[SHORT];
-    private final ByteBuffer dwordBbuf = ByteBuffer.wrap(dwordBuf);
-    private final ByteBuffer wordBbuf = ByteBuffer.wrap(wordBuf);
-    private final ByteBuffer cfhBbuf = ByteBuffer.wrap(cfhBuf);
 
     /**
      * Opens the given file for reading, assuming "UTF8" for file names.
@@ -214,23 +210,18 @@ public class ZipFile implements Closeable {
      */
     public ZipFile(final File f, final String encoding, final boolean useUnicodeExtraFields)
         throws IOException {
-        this(Files.newByteChannel(f.toPath(), EnumSet.of(StandardOpenOption.READ)),
-             f.getAbsolutePath(), encoding, useUnicodeExtraFields, true);
+        this(Okio.store(f), f.getAbsolutePath(), encoding, useUnicodeExtraFields, true);
     }
 
     /**
      * Opens the given channel for reading, assuming "UTF8" for file names.
-     *
-     * <p>{@link
-     * org.apache.commons.compress.utils.SeekableInMemoryByteChannel}
-     * allows you to read from an in-memory archive.</p>
      *
      * @param channel the archive.
      *
      * @throws IOException if an error occurs while reading the file.
      * @since 1.13
      */
-    public ZipFile(final SeekableByteChannel channel)
+    public ZipFile(final Store channel)
             throws IOException {
         this(channel, "unknown archive", ZipEncodingHelper.UTF8, true);
     }
@@ -239,10 +230,6 @@ public class ZipFile implements Closeable {
      * Opens the given channel for reading, assuming the specified
      * encoding for file names.
      *
-     * <p>{@link
-     * org.apache.commons.compress.utils.SeekableInMemoryByteChannel}
-     * allows you to read from an in-memory archive.</p>
-     *
      * @param channel the archive.
      * @param encoding the encoding to use for file names, use null
      * for the platform's default encoding
@@ -250,7 +237,7 @@ public class ZipFile implements Closeable {
      * @throws IOException if an error occurs while reading the file.
      * @since 1.13
      */
-    public ZipFile(final SeekableByteChannel channel, final String encoding)
+    public ZipFile(final Store channel, final String encoding)
         throws IOException {
         this(channel, "unknown archive", encoding, true);
     }
@@ -258,10 +245,6 @@ public class ZipFile implements Closeable {
     /**
      * Opens the given channel for reading, assuming the specified
      * encoding for file names.
-     *
-     * <p>{@link
-     * org.apache.commons.compress.utils.SeekableInMemoryByteChannel}
-     * allows you to read from an in-memory archive.</p>
      *
      * @param channel the archive.
      * @param archiveName name of the archive, used for error messages only.
@@ -273,13 +256,13 @@ public class ZipFile implements Closeable {
      * @throws IOException if an error occurs while reading the file.
      * @since 1.13
      */
-    public ZipFile(final SeekableByteChannel channel, final String archiveName,
+    public ZipFile(final Store channel, final String archiveName,
                    final String encoding, final boolean useUnicodeExtraFields)
         throws IOException {
         this(channel, archiveName, encoding, useUnicodeExtraFields, false);
     }
 
-    private ZipFile(final SeekableByteChannel channel, final String archiveName,
+    private ZipFile(final Store channel, final String archiveName,
                     final String encoding, final boolean useUnicodeExtraFields,
                     final boolean closeOnError)
         throws IOException {
@@ -287,7 +270,11 @@ public class ZipFile implements Closeable {
         this.encoding = encoding;
         this.zipEncoding = ZipEncodingHelper.getZipEncoding(encoding);
         this.useUnicodeExtraFields = useUnicodeExtraFields;
-        archive = channel;
+        if (channel instanceof BufferedStore) {
+            archive = (BufferedStore) channel;
+        } else {
+            archive = Okio.buffer(channel);
+        }
         boolean success = false;
         try {
             final Map<ZipArchiveEntry, NameAndComment> entriesWithoutUTF8Flag =
@@ -590,8 +577,7 @@ public class ZipFile implements Closeable {
 
         positionAtCentralDirectory();
 
-        wordBbuf.rewind();
-        IOUtils.readFully(archive, wordBbuf);
+        archive.readFully(wordBuf);
         long sig = ZipLong.getValue(wordBuf);
 
         if (sig != CFH_SIG && startsWithLocalFileHeader()) {
@@ -601,8 +587,7 @@ public class ZipFile implements Closeable {
 
         while (sig == CFH_SIG) {
             readCentralDirectoryEntry(noUTF8Flag);
-            wordBbuf.rewind();
-            IOUtils.readFully(archive, wordBbuf);
+            archive.readFully(wordBuf);
             sig = ZipLong.getValue(wordBuf);
         }
         return noUTF8Flag;
@@ -620,8 +605,7 @@ public class ZipFile implements Closeable {
     private void
         readCentralDirectoryEntry(final Map<ZipArchiveEntry, NameAndComment> noUTF8Flag)
         throws IOException {
-        cfhBbuf.rewind();
-        IOUtils.readFully(archive, cfhBbuf);
+        archive.readFully(cfhBuf);
         int off = 0;
         final OffsetEntry offset = new OffsetEntry();
         final Entry ze = new Entry(offset);
@@ -679,7 +663,7 @@ public class ZipFile implements Closeable {
         off += WORD;
 
         final byte[] fileName = new byte[fileNameLen];
-        IOUtils.readFully(archive, ByteBuffer.wrap(fileName));
+        archive.readFully(fileName);
         ze.setName(entryEncoding.decode(fileName), fileName);
 
         // LFH offset,
@@ -688,13 +672,13 @@ public class ZipFile implements Closeable {
         entries.add(ze);
 
         final byte[] cdExtraData = new byte[extraLen];
-        IOUtils.readFully(archive, ByteBuffer.wrap(cdExtraData));
+        archive.readFully(cdExtraData);
         ze.setCentralDirectoryExtra(cdExtraData);
 
         setSizesAndOffsetFromZip64Extra(ze, offset, diskStart);
 
         final byte[] comment = new byte[commentLen];
-        IOUtils.readFully(archive, ByteBuffer.wrap(comment));
+        archive.readFully(comment);
         ze.setComment(entryEncoding.decode(comment));
 
         if (!hasUTF8Flag && useUnicodeExtraFields) {
@@ -853,11 +837,10 @@ public class ZipFile implements Closeable {
         positionAtEndOfCentralDirectoryRecord();
         boolean found = false;
         final boolean searchedForZip64EOCD =
-            archive.position() > ZIP64_EOCDL_LENGTH;
+            archive.tell() > ZIP64_EOCDL_LENGTH;
         if (searchedForZip64EOCD) {
-            archive.position(archive.position() - ZIP64_EOCDL_LENGTH);
-            wordBbuf.rewind();
-            IOUtils.readFully(archive, wordBbuf);
+            archive.seek(archive.tell() - ZIP64_EOCDL_LENGTH);
+            archive.readFully(wordBuf);
             found = Arrays.equals(ZipConstants.ZIP64_EOCD_LOC_SIG,
                                   wordBuf);
         }
@@ -885,20 +868,17 @@ public class ZipFile implements Closeable {
         throws IOException {
         skipBytes(ZIP64_EOCDL_LOCATOR_OFFSET
                   - WORD /* signature has already been read */);
-        dwordBbuf.rewind();
-        IOUtils.readFully(archive, dwordBbuf);
-        archive.position(ZipEightByteInteger.getLongValue(dwordBuf));
-        wordBbuf.rewind();
-        IOUtils.readFully(archive, wordBbuf);
+        archive.readFully(dwordBuf);
+        archive.seek(ZipEightByteInteger.getLongValue(dwordBuf));
+        archive.readFully(wordBuf);
         if (!Arrays.equals(wordBuf, ZipConstants.ZIP64_EOCD_SIG)) {
             throw new ZipException("archive's ZIP64 end of central "
                                    + "directory locator is corrupt.");
         }
         skipBytes(ZIP64_EOCD_CFD_LOCATOR_OFFSET
                   - WORD /* signature has already been read */);
-        dwordBbuf.rewind();
-        IOUtils.readFully(archive, dwordBbuf);
-        archive.position(ZipEightByteInteger.getLongValue(dwordBuf));
+        archive.readFully(dwordBuf);
+        archive.seek(ZipEightByteInteger.getLongValue(dwordBuf));
     }
 
     /**
@@ -911,9 +891,8 @@ public class ZipFile implements Closeable {
     private void positionAtCentralDirectory32()
         throws IOException {
         skipBytes(CFD_LOCATOR_OFFSET);
-        wordBbuf.rewind();
-        IOUtils.readFully(archive, wordBbuf);
-        archive.position(ZipLong.getValue(wordBuf));
+        archive.readFully(wordBuf);
+        archive.seek(ZipLong.getValue(wordBuf));
     }
 
     /**
@@ -943,21 +922,19 @@ public class ZipFile implements Closeable {
             Math.max(0L, archive.size() - maxDistanceFromEnd);
         if (off >= 0) {
             for (; off >= stopSearching; off--) {
-                archive.position(off);
+                archive.seek(off);
                 try {
-                    wordBbuf.rewind();
-                    IOUtils.readFully(archive, wordBbuf);
-                    wordBbuf.flip();
+                    archive.readFully(wordBuf);
                 } catch (EOFException ex) {
                     break;
                 }
-                int curr = wordBbuf.get();
+                int curr = wordBuf[0];
                 if (curr == sig[POS_0]) {
-                    curr = wordBbuf.get();
+                    curr = wordBuf[1];
                     if (curr == sig[POS_1]) {
-                        curr = wordBbuf.get();
+                        curr = wordBuf[2];
                         if (curr == sig[POS_2]) {
-                            curr = wordBbuf.get();
+                            curr = wordBuf[3];
                             if (curr == sig[POS_3]) {
                                 found = true;
                                 break;
@@ -968,7 +945,7 @@ public class ZipFile implements Closeable {
             }
         }
         if (found) {
-            archive.position(off);
+            archive.seek(off);
         }
         return found;
     }
@@ -978,12 +955,12 @@ public class ZipFile implements Closeable {
      * skipping failed.
      */ 
     private void skipBytes(final int count) throws IOException {
-        long currentPosition = archive.position();
+        long currentPosition = archive.tell();
         long newPosition = currentPosition + count;
         if (newPosition > archive.size()) {
             throw new EOFException();
         }
-        archive.position(newPosition);
+        archive.seek(newPosition);
     }
 
     /**
@@ -1017,17 +994,17 @@ public class ZipFile implements Closeable {
             final Entry ze = (Entry) zipArchiveEntry;
             final OffsetEntry offsetEntry = ze.getOffsetEntry();
             final long offset = offsetEntry.headerOffset;
-            archive.position(offset + LFH_OFFSET_FOR_FILENAME_LENGTH);
-            wordBbuf.rewind();
-            IOUtils.readFully(archive, wordBbuf);
-            wordBbuf.flip();
-            wordBbuf.get(shortBuf);
+            archive.seek(offset + LFH_OFFSET_FOR_FILENAME_LENGTH);
+            archive.readFully(wordBuf);
+            shortBuf[0] = wordBuf[0];
+            shortBuf[1] = wordBuf[1];
             final int fileNameLen = ZipShort.getValue(shortBuf);
-            wordBbuf.get(shortBuf);
+            shortBuf[0] = wordBuf[2];
+            shortBuf[1] = wordBuf[3];
             final int extraFieldLen = ZipShort.getValue(shortBuf);
             skipBytes(fileNameLen);
             final byte[] localExtraData = new byte[extraFieldLen];
-            IOUtils.readFully(archive, ByteBuffer.wrap(localExtraData));
+            archive.readFully(localExtraData);
             ze.setExtra(localExtraData);
             offsetEntry.dataOffset = offset + LFH_OFFSET_FOR_FILENAME_LENGTH
                 + SHORT + SHORT + fileNameLen + extraFieldLen;
@@ -1053,9 +1030,8 @@ public class ZipFile implements Closeable {
      * it may be an empty archive.
      */
     private boolean startsWithLocalFileHeader() throws IOException {
-        archive.position(0);
-        wordBbuf.rewind();
-        IOUtils.readFully(archive, wordBbuf);
+        archive.seek(0);
+        archive.readFully(wordBuf);
         return Arrays.equals(wordBuf, ZipConstants.LFH_SIG);
     }
 
@@ -1065,8 +1041,6 @@ public class ZipFile implements Closeable {
      * range can be read.
      */
     private class BoundedInputStream extends InputStream {
-        private static final int MAX_BUF_LEN = 8192;
-        private final ByteBuffer buffer;
         private long remaining;
         private long loc;
         private boolean addDummyByte = false;
@@ -1074,11 +1048,6 @@ public class ZipFile implements Closeable {
         BoundedInputStream(final long start, final long remaining) {
             this.remaining = remaining;
             loc = start;
-            if (remaining < MAX_BUF_LEN && remaining > 0) {
-                buffer = ByteBuffer.allocate((int) remaining);
-            } else {
-                buffer = ByteBuffer.allocate(MAX_BUF_LEN);
-            }
         }
 
         @Override
@@ -1091,12 +1060,12 @@ public class ZipFile implements Closeable {
                 return -1;
             }
             synchronized (archive) {
-                archive.position(loc++);
-                int read = read(1);
-                if (read < 0) {
-                    return read;
+                archive.seek(loc++);
+                try {
+                    return archive.readByte() & 0xff;
+                } catch (EOFException e) {
+                    return -1;
                 }
-                return buffer.get() & 0xff;
             }
         }
 
@@ -1118,32 +1087,16 @@ public class ZipFile implements Closeable {
             if (len > remaining) {
                 len = (int) remaining;
             }
-            ByteBuffer buf;
             int ret = -1;
             synchronized (archive) {
-                archive.position(loc);
-                if (len <= buffer.capacity()) {
-                    buf = buffer;
-                    ret = read(len);
-                } else {
-                    buf = ByteBuffer.allocate(len);
-                    ret = archive.read(buf);
-                    buf.flip();
-                }
+                archive.seek(loc);
+                ret = archive.read(b, off, len);
             }
             if (ret > 0) {
-                buf.get(b, off, ret);
                 loc += ret;
                 remaining -= ret;
             }
             return ret;
-        }
-
-        private int read(int len) throws IOException {
-            buffer.rewind().limit(len);
-            int read = archive.read(buffer);
-            buffer.flip();
-            return read;
         }
 
         /**
